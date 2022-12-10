@@ -1,0 +1,3 @@
+[submodule "yosemite/extern/glfw"]
+	path = yosemite/extern/glfw
+	url = https://github.com/glfw/glfw
