@@ -45,9 +45,13 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
+    <CustomBuildBeforeTargets>
+    </CustomBuildBeforeTargets>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
+    <CustomBuildBeforeTargets>
+    </CustomBuildBeforeTargets>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg">
     <VcpkgEnabled>false</VcpkgEnabled>
@@ -70,6 +74,29 @@
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <CustomBuildStep>
+      <Command>
+      </Command>
+      <Message>
+      </Message>
+      <Outputs>
+      </Outputs>
+      <Inputs>
+      </Inputs>
+    </CustomBuildStep>
+    <CustomBuild>
+      <Command>$(VULKAN_SDK)\Bin\glslangValidator %(FullPath) -V -o src/shaders/%(Filename).spv</Command>
+      <Message>
+      </Message>
+      <Outputs>src/shaders/%(Filename).spv</Outputs>
+      <LinkObjects>false</LinkObjects>
+      <BuildInParallel>true</BuildInParallel>
+      <AdditionalInputs>%(FullPath)</AdditionalInputs>
+    </CustomBuild>
+    <PostBuildEvent>
+      <Command>for %%f in (*.vert *.tesc *.tese *.geom *.frag *.comp) do $(VULKAN_SDK)\Bin\glslangValidator.exe -V -o $(OutDir)%%f.spv %%f
+</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -91,6 +118,29 @@
       <AdditionalLibraryDirectories>$(VULKAN_SDK)\Lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>vulkan-1.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <CustomBuildStep>
+      <Command>
+      </Command>
+      <Message>
+      </Message>
+      <Outputs>
+      </Outputs>
+      <Inputs>
+      </Inputs>
+    </CustomBuildStep>
+    <CustomBuild>
+      <Command>$(VULKAN_SDK)\Bin\glslangValidator %(FullPath) -V -o src/shaders/%(Filename).spv</Command>
+      <Message>
+      </Message>
+      <Outputs>src/shaders/%(Filename).spv</Outputs>
+      <LinkObjects>false</LinkObjects>
+      <BuildInParallel>true</BuildInParallel>
+      <AdditionalInputs>%(FullPath)</AdditionalInputs>
+    </CustomBuild>
+    <PostBuildEvent>
+      <Command>for %%f in (*.vert *.tesc *.tese *.geom *.frag *.comp) do $(VULKAN_SDK)\Bin\glslangValidator.exe -V -o $(OutDir)%%f.spv %%f
+</Command>
+    </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="extern\glfw\src\context.c" />
@@ -124,6 +174,14 @@
     <ClInclude Include="extern\glfw\src\win32_platform.h" />
     <ClInclude Include="extern\glfw\src\win32_thread.h" />
     <ClInclude Include="extern\glfw\src\win32_time.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\shaders\mesh.frag.glsl">
+      <FileType>Document</FileType>
+    </CustomBuild>
+    <CustomBuild Include="src\shaders\mesh.vert.glsl">
+      <FileType>Document</FileType>
+    </CustomBuild>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
