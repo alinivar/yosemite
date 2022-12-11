@@ -1,12 +1,11 @@
 
 #version 460
 
-struct Vertex
-{
-	float vx, vy, vz;
-	float nx, ny, nz;
-	float tu, tv;
-};
+#extension GL_EXT_shader_explicit_arithmetic_types : require
+
+#extension GL_GOOGLE_include_directive : require
+
+#include "mesh.h"
 
 layout(binding = 0) readonly buffer Vertices
 {

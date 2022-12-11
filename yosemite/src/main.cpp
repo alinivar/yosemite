@@ -20,6 +20,7 @@
 		}
 
 #define VSYNC 0
+#define RTX 1
 
 struct Vertex
 {
@@ -28,10 +29,19 @@ struct Vertex
 	float tu, tv;
 };
 
+struct Meshlet
+{
+	uint32_t vertices[64];
+	uint8_t indices[124*3]; // up to 124 triangles
+	uint8_t triangleCount;
+	uint8_t vertexCount;
+};
+
 struct Mesh
 {
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
+	std::vector<Meshlet> meshlets;
 };
 
 struct Swapchain
@@ -217,13 +227,32 @@ VkDevice createDevice(VkPhysicalDevice physicalDevice, uint32_t familyIndex)
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+		VK_NV_MESH_SHADER_EXTENSION_NAME,
 	};
 
 	VkPhysicalDeviceVulkan13Features features13 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
 	features13.dynamicRendering = true;
 
+#if RTX
+	VkPhysicalDeviceMeshShaderFeaturesNV featuresMesh = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV };
+	featuresMesh.meshShader = true;
+	featuresMesh.taskShader = true;
+
+	features13.pNext = &featuresMesh;
+#endif
+
+	VkPhysicalDevice8BitStorageFeatures features8 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES };
+	features8.storageBuffer8BitAccess = true;
+	features8.uniformAndStorageBuffer8BitAccess = true;
+	features8.pNext = &features13;
+
+	VkPhysicalDevice16BitStorageFeatures features16 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES };
+	features16.storageBuffer16BitAccess = true;
+	features16.uniformAndStorageBuffer16BitAccess = true;
+	features16.pNext = &features8;
+
 	VkDeviceCreateInfo createInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	createInfo.pNext = &features13;
+	createInfo.pNext = &features16;
 	createInfo.queueCreateInfoCount = 1;
 	createInfo.pQueueCreateInfos = &queueInfo;
 	createInfo.enabledExtensionCount = ARRAYSIZE(extensions);
@@ -381,11 +410,24 @@ VkShaderModule loadShaderModule(VkDevice device, const char* path)
 
 VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device)
 {
+#if RTX
+	VkDescriptorSetLayoutBinding bindings[2] = {};
+	bindings[0].binding = 0;
+	bindings[0].descriptorCount = 1;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[0].stageFlags = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
+	
+	bindings[1].binding = 1;
+	bindings[1].descriptorCount = 1;
+	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[1].stageFlags = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
+#else
 	VkDescriptorSetLayoutBinding bindings[1] = {};
 	bindings[0].binding = 0;
 	bindings[0].descriptorCount = 1;
 	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+#endif
 
 	VkDescriptorSetLayoutCreateInfo createInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
 	createInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
@@ -410,24 +452,25 @@ VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout set
 	return layout;
 }
 
-VkPipeline createGraphicsPipeline(VkDevice device, VkPipelineCache cache, VkPipelineLayout layout, const VkPipelineRenderingCreateInfo* renderingInfo, VkShaderModule vertShader, VkShaderModule fragShader)
+VkPipeline createGraphicsPipeline(VkDevice device, VkPipelineCache cache, VkPipelineLayout layout, const VkPipelineRenderingCreateInfo* renderingInfo, const std::vector<VkShaderModule>& shaderModules, const std::vector<VkShaderStageFlags> stageFlags)
 {
+	assert(shaderModules.size());
+	assert(shaderModules.size() == stageFlags.size());
+
 	VkGraphicsPipelineCreateInfo createInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	createInfo.pNext = renderingInfo;
 	createInfo.layout = layout;
 
-	VkPipelineShaderStageCreateInfo stages[2] = {};
-	stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	stages[0].module = vertShader;
-	stages[0].pName = "main";
-	stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-	
-	stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-	stages[1].module = fragShader;
-	stages[1].pName = "main";
-	stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkPipelineShaderStageCreateInfo stages[8] = {};
+	for (size_t i = 0; i < shaderModules.size(); i++)
+	{
+		stages[i].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		stages[i].module = shaderModules[i];
+		stages[i].pName = "main";
+		stages[i].stage = (VkShaderStageFlagBits)stageFlags[i];
+	}
 
-	createInfo.stageCount = ARRAYSIZE(stages);
+	createInfo.stageCount = uint32_t(shaderModules.size());
 	createInfo.pStages = stages;
 
 	VkPipelineVertexInputStateCreateInfo vertexInputState = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
@@ -605,7 +648,7 @@ void loadObj(std::vector<Vertex>& vertices, const char* path)
 	fast_obj_destroy(obj);
 }
 
-void loadMesh(Mesh& mesh, const char* path)
+void loadMesh(Mesh& mesh, const char* path, bool buildMeshlets)
 {
 	std::vector<Vertex> triangle_vertices;
 	loadObj(triangle_vertices, path);
@@ -623,6 +666,62 @@ void loadMesh(Mesh& mesh, const char* path)
 
 	meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), index_count, vertex_count);
 	meshopt_optimizeVertexFetch(mesh.vertices.data(), mesh.indices.data(), index_count, mesh.vertices.data(), vertex_count, sizeof(Vertex));
+
+	if (buildMeshlets)
+	{
+		Meshlet meshlet = {};
+		std::vector<uint8_t> meshletVertices(mesh.vertices.size(), 0xff);
+
+		for (uint32_t i = 0; i < mesh.indices.size(); i += 3)
+		{
+			uint32_t a = mesh.indices[i + 0];
+			uint32_t b = mesh.indices[i + 1];
+			uint32_t c = mesh.indices[i + 2];
+
+			uint8_t& av = meshletVertices[a];
+			uint8_t& bv = meshletVertices[b];
+			uint8_t& cv = meshletVertices[c];
+
+			if (meshlet.vertexCount + (av == 0xff) + (bv == 0xff) + (cv == 0xff) > 64 || meshlet.triangleCount + 1 > 124)
+			{
+				mesh.meshlets.push_back(meshlet);
+
+				for (size_t j = 0; j < meshlet.vertexCount; j++)
+					meshletVertices[meshlet.vertices[j]] = 0xff;
+
+				meshlet = {};
+			}
+
+			if (av == 0xff)
+			{
+				av = meshlet.vertexCount;
+				meshlet.vertices[meshlet.vertexCount++] = a;
+			}
+
+			if (bv == 0xff)
+			{
+				bv = meshlet.vertexCount;
+				meshlet.vertices[meshlet.vertexCount++] = b;
+			}
+
+			if (cv == 0xff)
+			{
+				cv = meshlet.vertexCount;
+				meshlet.vertices[meshlet.vertexCount++] = c;
+			}
+
+			meshlet.indices[meshlet.triangleCount * 3 + 0] = av;
+			meshlet.indices[meshlet.triangleCount * 3 + 1] = bv;
+			meshlet.indices[meshlet.triangleCount * 3 + 2] = cv;
+			meshlet.triangleCount++;
+		}
+
+		if (meshlet.triangleCount)
+			mesh.meshlets.push_back(meshlet);
+
+		while (mesh.meshlets.size() % 32)
+			mesh.meshlets.push_back(Meshlet());
+	}
 }
 
 int main(int argc, char** argv)
@@ -686,8 +785,16 @@ int main(int argc, char** argv)
 	Swapchain swapchain = {};
 	createSwapchain(swapchain, device, physicalDevice, surface, surfaceFormat, VK_NULL_HANDLE);
 
+#if RTX
+	VkShaderModule meshTaskShader = loadShaderModule(device, "src/shaders/meshlet.task.spv");
+	assert(meshTaskShader);
+	
+	VkShaderModule meshVertShader = loadShaderModule(device, "src/shaders/meshlet.mesh.spv");
+	assert(meshVertShader);
+#else
 	VkShaderModule meshVertShader = loadShaderModule(device, "src/shaders/mesh.vert.spv");
 	assert(meshVertShader);
+#endif
 
 	VkShaderModule meshFragShader = loadShaderModule(device, "src/shaders/mesh.frag.spv");
 	assert(meshFragShader);
@@ -704,14 +811,21 @@ int main(int argc, char** argv)
 	meshRenderingInfo.colorAttachmentCount = ARRAYSIZE(colorFormats);
 	meshRenderingInfo.pColorAttachmentFormats = colorFormats;
 
-	VkPipeline meshPipeline = createGraphicsPipeline(device, 0, meshLayout, &meshRenderingInfo, meshVertShader, meshFragShader);
+#if RTX
+	VkPipeline meshPipeline = createGraphicsPipeline(device, 0, meshLayout, &meshRenderingInfo, { meshTaskShader, meshVertShader, meshFragShader }, { VK_SHADER_STAGE_TASK_BIT_NV, VK_SHADER_STAGE_MESH_BIT_NV, VK_SHADER_STAGE_FRAGMENT_BIT });
 	assert(meshPipeline);
+#else
+	VkPipeline meshPipeline = createGraphicsPipeline(device, 0, meshLayout, &meshRenderingInfo, { meshVertShader, meshFragShader }, { VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT });
+	assert(meshPipeline);
+#endif
 
 	VkPhysicalDeviceMemoryProperties memoryProperties = {};
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
+	bool buildMeshlets = RTX ? true : false;
+
 	Mesh mesh = {};
-	loadMesh(mesh, argv[1]);
+	loadMesh(mesh, argv[1], buildMeshlets);
 
 	Buffer scratch = {};
 	createBuffer(scratch, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -720,6 +834,14 @@ int main(int argc, char** argv)
 	createBuffer(vb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 	Buffer ib = {};
 	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+#if RTX
+	Buffer mb = {};
+	createBuffer(mb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	memcpy(scratch.data, mesh.meshlets.data(), mesh.meshlets.size() * sizeof(Meshlet));
+	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, mb, mesh.meshlets.size() * sizeof(Meshlet));
+#endif
 
 	memcpy(scratch.data, mesh.vertices.data(), mesh.vertices.size()  * sizeof(Vertex));
 	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, mesh.vertices.size() * sizeof(Vertex));
@@ -797,6 +919,29 @@ int main(int argc, char** argv)
 		vbInfo.offset = 0;
 		vbInfo.range = vb.size;
 
+#if RTX
+		VkDescriptorBufferInfo mbInfo = {};
+		mbInfo.buffer = mb.buffer;
+		mbInfo.offset = 0;
+		mbInfo.range = mb.size;
+
+		VkWriteDescriptorSet descriptors[2] = {};
+		descriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptors[0].dstBinding = 0;
+		descriptors[0].descriptorCount = 1;
+		descriptors[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptors[0].pBufferInfo = &vbInfo;
+		
+		descriptors[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptors[1].dstBinding = 1;
+		descriptors[1].descriptorCount = 1;
+		descriptors[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptors[1].pBufferInfo = &mbInfo;
+		
+		vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshLayout, 0, ARRAYSIZE(descriptors), descriptors);
+		
+		vkCmdDrawMeshTasksNV(commandBuffer, uint32_t(mesh.meshlets.size()) / 32, 0);
+#else
 		VkWriteDescriptorSet descriptors[1] = {};
 		descriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		descriptors[0].dstBinding = 0;
@@ -808,6 +953,7 @@ int main(int argc, char** argv)
 		vkCmdBindIndexBuffer(commandBuffer, ib.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
+#endif
 
 		vkCmdEndRendering(commandBuffer);
 		
@@ -837,18 +983,22 @@ int main(int argc, char** argv)
 
 		VK_CHECK(vkDeviceWaitIdle(device));
 
+		glfwPollEvents();
+
 		frameEnd = glfwGetTime();
 		deltaTime = frameEnd - frameBegin;
 
 		static char title[256] = {};
-		snprintf(title, sizeof(title), "Yosemite | FPS: %.0f", 1.0 / deltaTime);
+		snprintf(title, sizeof(title), "Yosemite | Frame time: %.2fms | Triangles: %lld | Meshlets: %lld", deltaTime * 1000, mesh.indices.size() / 3, mesh.meshlets.size());
 		glfwSetWindowTitle(window, title);
-
-		glfwPollEvents();
 	}
 
 	vkDestroySemaphore(device, submitSemaphore, 0);
 	vkDestroySemaphore(device, acquireSemaphore, 0);
+
+#if RTX
+	destroyBuffer(device, mb);
+#endif
 
 	destroyBuffer(device, ib);
 	destroyBuffer(device, vb);
@@ -859,6 +1009,10 @@ int main(int argc, char** argv)
 	vkDestroyDescriptorSetLayout(device, meshSetLayout, 0);
 	vkDestroyShaderModule(device, meshFragShader, 0);
 	vkDestroyShaderModule(device, meshVertShader, 0);
+
+#if RTX
+	vkDestroyShaderModule(device, meshTaskShader, 0);
+#endif
 
 	destroySwapchain(device, swapchain);
 	vkDestroySurfaceKHR(instance, surface, 0);

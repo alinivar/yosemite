@@ -194,12 +194,23 @@
     <ClInclude Include="extern\glfw\src\win32_time.h" />
     <ClInclude Include="extern\meshoptimizer\src\meshoptimizer.h" />
     <ClInclude Include="extern\volk\volk.h" />
+    <ClInclude Include="src\shaders\mesh.h" />
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\shaders\mesh.frag.glsl">
       <FileType>Document</FileType>
     </CustomBuild>
     <CustomBuild Include="src\shaders\mesh.vert.glsl">
+      <FileType>Document</FileType>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\shaders\meshlet.mesh.glsl">
+      <FileType>Document</FileType>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="src\shaders\meshlet.task.glsl">
       <FileType>Document</FileType>
     </CustomBuild>
   </ItemGroup>

@@ -164,9 +164,14 @@
     <ClInclude Include="extern\meshoptimizer\src\meshoptimizer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\shaders\mesh.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="src\shaders\mesh.frag.glsl" />
     <CustomBuild Include="src\shaders\mesh.vert.glsl" />
+    <CustomBuild Include="src\shaders\meshlet.mesh.glsl" />
+    <CustomBuild Include="src\shaders\meshlet.task.glsl" />
   </ItemGroup>
 </Project>
