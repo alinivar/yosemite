@@ -84,6 +84,9 @@
     <ClCompile Include="extern\volk\volk.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="extern\fast_obj\fast_obj.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="extern\glfw\src\win32_joystick.h">
@@ -108,6 +111,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="extern\volk\volk.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="extern\fast_obj\fast_obj.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

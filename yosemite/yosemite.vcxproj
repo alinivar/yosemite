@@ -64,7 +64,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_GLFW_WIN32;GLFW_EXPOSE_NATIVE_WIN32;VK_USE_PLATFORM_WIN32_KHR;CONSOLE;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>extern\glfw\include;$(VULKAN_SDK)\Include;extern\volk;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>extern\glfw\include;$(VULKAN_SDK)\Include;extern\volk;extern\fast_obj;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
@@ -106,7 +106,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;_GLFW_WIN32;GLFW_EXPOSE_NATIVE_WIN32;VK_USE_PLATFORM_WIN32_KHR;CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>extern\glfw\include;$(VULKAN_SDK)\Include;extern\volk;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>extern\glfw\include;$(VULKAN_SDK)\Include;extern\volk;extern\fast_obj;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <LanguageStandard_C>stdc17</LanguageStandard_C>
     </ClCompile>
@@ -143,6 +143,7 @@
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="extern\fast_obj\fast_obj.c" />
     <ClCompile Include="extern\glfw\src\context.c" />
     <ClCompile Include="extern\glfw\src\egl_context.c" />
     <ClCompile Include="extern\glfw\src\init.c" />
@@ -168,6 +169,7 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="extern\fast_obj\fast_obj.h" />
     <ClInclude Include="extern\glfw\src\null_joystick.h" />
     <ClInclude Include="extern\glfw\src\null_platform.h" />
     <ClInclude Include="extern\glfw\src\platform.h" />

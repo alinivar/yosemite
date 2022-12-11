@@ -25,5 +25,5 @@ void main()
 
 	gl_Position = vec4(position, 1.0);
 	
-	vColor = vec4(1.0, 0.8, 0.5, 1.0);
+	vColor = vec4(normal * 0.5 + 0.5, 1.0);
 }

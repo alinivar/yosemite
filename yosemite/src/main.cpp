@@ -2,11 +2,15 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <vector>
+
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
 
 #include <volk.h>
+
+#include <fast_obj.h>
 
 #define VK_CHECK(vkcall)					\
 		{									\
@@ -19,6 +23,11 @@ struct Vertex
 	float vx, vy, vz;
 	float nx, ny, nz;
 	float tu, tv;
+};
+
+struct Mesh
+{
+	std::vector<Vertex> vertices;
 };
 
 struct Swapchain
@@ -540,8 +549,64 @@ VkSemaphore createSemaphore(VkDevice device)
 	return semaphore;
 }
 
-int main(void)
+void loadObj(std::vector<Vertex>& vertices, const char* path)
 {
+	fastObjMesh* obj = fast_obj_read(path);
+	assert(obj);
+
+	size_t index_count = 0;
+
+	for (uint32_t i = 0; i < obj->face_count; i++)
+		index_count += 3 * (obj->face_vertices[i] - 2);
+
+	vertices.resize(index_count);
+
+	size_t vertex_offset = 0;
+	size_t index_offset = 0;
+
+	for (uint32_t i = 0; i < obj->face_count; i++)
+	{
+		for (uint32_t j = 0; j < obj->face_vertices[i]; j++)
+		{
+			fastObjIndex gi = obj->indices[index_offset + j];
+
+			if (j >= 3)
+			{
+				vertices[vertex_offset + 0] = vertices[vertex_offset - 3];
+				vertices[vertex_offset + 1] = vertices[vertex_offset - 1];
+				vertex_offset += 2;
+			}
+
+			Vertex& v = vertices[vertex_offset++];
+
+			v.vx = obj->positions[gi.p * 3 + 0];
+			v.vy = obj->positions[gi.p * 3 + 1];
+			v.vz = obj->positions[gi.p * 3 + 2];
+
+			v.nx = obj->normals[gi.n * 3 + 0];
+			v.ny = obj->normals[gi.n * 3 + 1];
+			v.nz = obj->normals[gi.n * 3 + 2];
+			
+			v.tu = obj->texcoords[gi.t * 2 + 0];
+			v.tv = obj->texcoords[gi.t * 2 + 1];
+		}
+
+		index_offset += obj->face_vertices[i];
+	}
+
+	assert(vertex_offset == index_offset);
+
+	fast_obj_destroy(obj);
+}
+
+int main(int argc, char** argv)
+{
+	if (argc != 2)
+	{
+		printf("Usage: %s <obj_file>\n", argv[0]);
+		return 1;
+	}
+
 	VkInstance instance = createInstance();
 	assert(instance);
 
@@ -619,12 +684,8 @@ int main(void)
 	VkPhysicalDeviceMemoryProperties memoryProperties = {};
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
-	const Vertex vertices[] =
-	{
-		{-0.5f, -0.5f, 0.0f,	0.0f, 0.0f, 0.0f,	0.0f, 0.0f},
-		{ 0.0f,  0.5f, 0.0f,	0.0f, 0.0f, 0.0f,	0.0f, 0.0f},
-		{ 0.5f, -0.5f, 0.0f,	0.0f, 0.0f, 0.0f,	0.0f, 0.0f},
-	};
+	std::vector<Vertex> vertices;
+	loadObj(vertices, argv[1]);
 
 	Buffer scratch = {};
 	createBuffer(scratch, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -634,8 +695,8 @@ int main(void)
 	Buffer ib = {};
 	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	memcpy(scratch.data, vertices, sizeof(vertices));
-	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, sizeof(vertices));
+	memcpy(scratch.data, vertices.data(), vertices.size()  * sizeof(Vertex));
+	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, vertices.size() * sizeof(Vertex));
 
 	VkSemaphore acquireSemaphore = createSemaphore(device);
 	assert(acquireSemaphore);
@@ -710,7 +771,7 @@ int main(void)
 
 		vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshLayout, 0, ARRAYSIZE(descriptors), descriptors);
 
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		vkCmdDraw(commandBuffer, vertices.size(), 1, 0, 0);
 
 		vkCmdEndRendering(commandBuffer);
 		
