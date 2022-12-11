@@ -704,10 +704,16 @@ int main(int argc, char** argv)
 	VkSemaphore submitSemaphore = createSemaphore(device);
 	assert(submitSemaphore);
 
+	double frameBegin = 0.0;
+	double frameEnd = 0.0;
+	double deltaTime = 0.0;
+
 	glfwShowWindow(window);
 
 	while (!glfwWindowShouldClose(window))
 	{
+		frameBegin = glfwGetTime();
+
 		{
 			int width, height;
 			glfwGetWindowSize(window, &width, &height);
@@ -771,7 +777,7 @@ int main(int argc, char** argv)
 
 		vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshLayout, 0, ARRAYSIZE(descriptors), descriptors);
 
-		vkCmdDraw(commandBuffer, vertices.size(), 1, 0, 0);
+		vkCmdDraw(commandBuffer, uint32_t(vertices.size()), 1, 0, 0);
 
 		vkCmdEndRendering(commandBuffer);
 		
@@ -800,6 +806,13 @@ int main(int argc, char** argv)
 		VK_CHECK(vkQueuePresentKHR(queue, &presentInfo));
 
 		VK_CHECK(vkDeviceWaitIdle(device));
+
+		frameEnd = glfwGetTime();
+		deltaTime = frameEnd - frameBegin;
+
+		static char title[256] = {};
+		snprintf(title, sizeof(title), "Yosemite | FPS: %.0f", 1.0 / deltaTime);
+		glfwSetWindowTitle(window, title);
 
 		glfwPollEvents();
 	}
