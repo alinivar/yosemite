@@ -58,6 +58,20 @@ VkImageMemoryBarrier imageBarrier(VkImage image, VkAccessFlags srcAccessMask, Vk
 	return result;
 }
 
+VkBufferMemoryBarrier bufferBarrier(VkBuffer buffer, VkAccessFlags srcAccessMask, VkAccessFlags dstAccessMask, size_t size)
+{
+	VkBufferMemoryBarrier result = { VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER };
+	result.buffer = buffer;
+	result.srcAccessMask = srcAccessMask;
+	result.dstAccessMask = dstAccessMask;
+	result.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	result.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	result.offset = 0;
+	result.size = size;
+
+	return result;
+}
+
 VkInstance createInstance(void)
 {
 	VK_CHECK(volkInitialize());
@@ -462,7 +476,7 @@ uint32_t chooseMemoryType(const VkPhysicalDeviceMemoryProperties& memoryProperti
 	return ~0u;
 }
 
-void createBuffer(Buffer& buffer, VkDevice device, const VkPhysicalDeviceMemoryProperties& memoryProperties, size_t size, VkBufferUsageFlags usage)
+void createBuffer(Buffer& buffer, VkDevice device, const VkPhysicalDeviceMemoryProperties& memoryProperties, size_t size, VkBufferUsageFlags usage, VkMemoryPropertyFlags memoryFlags)
 {
 	VkBufferCreateInfo createInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
 	createInfo.size = size;
@@ -476,13 +490,38 @@ void createBuffer(Buffer& buffer, VkDevice device, const VkPhysicalDeviceMemoryP
 
 	VkMemoryAllocateInfo allocateInfo = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	allocateInfo.allocationSize = size;
-	allocateInfo.memoryTypeIndex = chooseMemoryType(memoryProperties, memoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	allocateInfo.memoryTypeIndex = chooseMemoryType(memoryProperties, memoryRequirements.memoryTypeBits, memoryFlags);
 
 	VK_CHECK(vkAllocateMemory(device, &allocateInfo, 0, &buffer.memory));
 	VK_CHECK(vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0));
-	VK_CHECK(vkMapMemory(device, buffer.memory, 0, size, 0, &buffer.data));
+
+	if (memoryFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+		VK_CHECK(vkMapMemory(device, buffer.memory, 0, size, 0, &buffer.data));
 
 	buffer.size = size;
+}
+
+void uploadBuffer(VkDevice device, VkQueue queue, VkCommandPool commandPool, VkCommandBuffer commandBuffer, const Buffer& src, const Buffer& dst, size_t size)
+{
+	VK_CHECK(vkResetCommandPool(device, commandPool, 0));
+
+	VkCommandBufferBeginInfo beginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO };
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+	VkBufferCopy copyRegion = {};
+	copyRegion.size = size;
+
+	vkCmdCopyBuffer(commandBuffer, src.buffer, dst.buffer, 1, &copyRegion);
+
+	VK_CHECK(vkEndCommandBuffer(commandBuffer));
+
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, 0));
+	VK_CHECK(vkDeviceWaitIdle(device));
 }
 
 void destroyBuffer(VkDevice device, Buffer& buffer)
@@ -587,12 +626,16 @@ int main(void)
 		{ 0.5f, -0.5f, 0.0f,	0.0f, 0.0f, 0.0f,	0.0f, 0.0f},
 	};
 
-	Buffer vb = {};
-	createBuffer(vb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
-	Buffer ib = {};
-	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
+	Buffer scratch = {};
+	createBuffer(scratch, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-	memcpy(vb.data, vertices, sizeof(vertices));
+	Buffer vb = {};
+	createBuffer(vb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	Buffer ib = {};
+	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	memcpy(scratch.data, vertices, sizeof(vertices));
+	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, sizeof(vertices));
 
 	VkSemaphore acquireSemaphore = createSemaphore(device);
 	assert(acquireSemaphore);
@@ -705,6 +748,7 @@ int main(void)
 
 	destroyBuffer(device, ib);
 	destroyBuffer(device, vb);
+	destroyBuffer(device, scratch);
 
 	vkDestroyPipeline(device, meshPipeline, 0);
 	vkDestroyPipelineLayout(device, meshLayout, 0);
