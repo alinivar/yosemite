@@ -2,11 +2,11 @@
 #include <assert.h>
 #include <stdio.h>
 
-#include <vulkan/vulkan.h>
-
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+
+#include <volk.h>
 
 #define VK_CHECK(vkcall)					\
 		{									\
@@ -60,6 +60,9 @@ VkImageMemoryBarrier imageBarrier(VkImage image, VkAccessFlags srcAccessMask, Vk
 
 VkInstance createInstance(void)
 {
+	VK_CHECK(volkInitialize());
+	assert(volkGetInstanceVersion() >= VK_API_VERSION_1_3);
+
 	VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
 	appInfo.apiVersion = VK_API_VERSION_1_3;
 
@@ -69,6 +72,10 @@ VkInstance createInstance(void)
 
 #ifdef VK_USE_PLATFORM_WIN32_KHR
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
+
+#ifdef _DEBUG
+		VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
 #endif
 	};
 
@@ -90,8 +97,43 @@ VkInstance createInstance(void)
 	VkInstance instance = 0;
 	VK_CHECK(vkCreateInstance(&createInfo, 0, &instance));
 
+	volkLoadInstance(instance);
+
 	return instance;
 }
+
+#ifdef _DEBUG
+VkBool32 VKAPI_CALL debugReportCallback(
+	VkDebugReportFlagsEXT flags,
+	VkDebugReportObjectTypeEXT objectType,
+	uint64_t object,
+	size_t location,
+	int32_t messageCode,
+	const char* layerPrefix,
+	const char* message,
+	void* userData
+)
+{
+	printf("[%s]: %s\n", layerPrefix, message);
+
+	return VK_FALSE;
+}
+
+VkDebugReportCallbackEXT registerDebugCallback(VkInstance instance)
+{
+	VkDebugReportCallbackCreateInfoEXT createInfo = { VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT };
+	createInfo.flags =	VK_DEBUG_REPORT_INFORMATION_BIT_EXT |
+						VK_DEBUG_REPORT_WARNING_BIT_EXT |
+						VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT |
+						VK_DEBUG_REPORT_ERROR_BIT_EXT;
+	createInfo.pfnCallback = debugReportCallback;
+
+	VkDebugReportCallbackEXT debugCallback = 0;
+	VK_CHECK(vkCreateDebugReportCallbackEXT(instance, &createInfo, 0, &debugCallback));
+
+	return debugCallback;
+}
+#endif
 
 VkPhysicalDevice pickPhysicalDevice(const VkPhysicalDevice* physicalDevices, uint32_t physicalDeviceCount)
 {
@@ -147,6 +189,7 @@ VkDevice createDevice(VkPhysicalDevice physicalDevice, uint32_t familyIndex)
 	const char* extensions[] =
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
 	};
 
 	VkPhysicalDeviceVulkan13Features features13 = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES };
@@ -309,10 +352,31 @@ VkShaderModule loadShaderModule(VkDevice device, const char* path)
 	return shaderModule;
 }
 
-VkPipelineLayout createPipelineLayout(VkDevice device)
+VkDescriptorSetLayout createDescriptorSetLayout(VkDevice device)
+{
+	VkDescriptorSetLayoutBinding bindings[1] = {};
+	bindings[0].binding = 0;
+	bindings[0].descriptorCount = 1;
+	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo createInfo = { VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO };
+	createInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
+	createInfo.bindingCount = ARRAYSIZE(bindings);
+	createInfo.pBindings = bindings;
+
+	VkDescriptorSetLayout setLayout = 0;
+	VK_CHECK(vkCreateDescriptorSetLayout(device, &createInfo, 0, &setLayout));
+
+	return setLayout;
+}
+
+VkPipelineLayout createPipelineLayout(VkDevice device, VkDescriptorSetLayout setLayout)
 {
 	VkPipelineLayoutCreateInfo createInfo = { VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO };
-	
+	createInfo.setLayoutCount = 1;
+	createInfo.pSetLayouts = &setLayout;
+
 	VkPipelineLayout layout = 0;
 	VK_CHECK(vkCreatePipelineLayout(device, &createInfo, 0, &layout));
 
@@ -339,32 +403,7 @@ VkPipeline createGraphicsPipeline(VkDevice device, VkPipelineCache cache, VkPipe
 	createInfo.stageCount = ARRAYSIZE(stages);
 	createInfo.pStages = stages;
 
-	VkVertexInputBindingDescription bindings[1] = {};
-	bindings[0].binding = 0;
-	bindings[0].stride = sizeof(Vertex);
-	bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-	VkVertexInputAttributeDescription attributes[3] = {};
-	attributes[0].binding = 0;
-	attributes[0].location = 0;
-	attributes[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributes[0].offset = offsetof(Vertex, vx);
-	
-	attributes[1].binding = 0;
-	attributes[1].location = 1;
-	attributes[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-	attributes[1].offset = offsetof(Vertex, nx);
-	
-	attributes[2].binding = 0;
-	attributes[2].location = 2;
-	attributes[2].format = VK_FORMAT_R32G32_SFLOAT;
-	attributes[2].offset = offsetof(Vertex, tu);
-
 	VkPipelineVertexInputStateCreateInfo vertexInputState = { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
-	vertexInputState.vertexBindingDescriptionCount = ARRAYSIZE(bindings);
-	vertexInputState.pVertexBindingDescriptions = bindings;
-	vertexInputState.vertexAttributeDescriptionCount = ARRAYSIZE(attributes);
-	vertexInputState.pVertexAttributeDescriptions = attributes;
 	createInfo.pVertexInputState = &vertexInputState;
 
 	VkPipelineInputAssemblyStateCreateInfo inputAssemblyState = { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
@@ -467,6 +506,11 @@ int main(void)
 	VkInstance instance = createInstance();
 	assert(instance);
 
+#ifdef _DEBUG
+	VkDebugReportCallbackEXT debugCallback = registerDebugCallback(instance);
+	assert(debugCallback);
+#endif
+
 	uint32_t physicalDeviceCount = 0;
 	VkPhysicalDevice physicalDevices[16];
 	VK_CHECK(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, 0));
@@ -518,7 +562,10 @@ int main(void)
 	VkShaderModule meshFragShader = loadShaderModule(device, "src/shaders/mesh.frag.spv");
 	assert(meshFragShader);
 
-	VkPipelineLayout meshLayout = createPipelineLayout(device);
+	VkDescriptorSetLayout meshSetLayout = createDescriptorSetLayout(device);
+	assert(meshSetLayout);
+
+	VkPipelineLayout meshLayout = createPipelineLayout(device, meshSetLayout);
 	assert(meshLayout);
 
 	VkFormat colorFormats[] = { surfaceFormat.format };
@@ -541,7 +588,7 @@ int main(void)
 	};
 
 	Buffer vb = {};
-	createBuffer(vb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+	createBuffer(vb, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT);
 	Buffer ib = {};
 	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT);
 
@@ -606,8 +653,19 @@ int main(void)
 		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-		VkDeviceSize dummyOffset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &vb.buffer, &dummyOffset);
+		VkDescriptorBufferInfo vbInfo = {};
+		vbInfo.buffer = vb.buffer;
+		vbInfo.offset = 0;
+		vbInfo.range = vb.size;
+
+		VkWriteDescriptorSet descriptors[1] = {};
+		descriptors[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptors[0].dstBinding = 0;
+		descriptors[0].descriptorCount = 1;
+		descriptors[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptors[0].pBufferInfo = &vbInfo;
+
+		vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshLayout, 0, ARRAYSIZE(descriptors), descriptors);
 
 		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
@@ -650,6 +708,7 @@ int main(void)
 
 	vkDestroyPipeline(device, meshPipeline, 0);
 	vkDestroyPipelineLayout(device, meshLayout, 0);
+	vkDestroyDescriptorSetLayout(device, meshSetLayout, 0);
 	vkDestroyShaderModule(device, meshFragShader, 0);
 	vkDestroyShaderModule(device, meshVertShader, 0);
 
@@ -662,6 +721,11 @@ int main(void)
 	vkDestroyCommandPool(device, commandPool, 0);
 
 	vkDestroyDevice(device, 0);
+
+#ifdef _DEBUG
+	vkDestroyDebugReportCallbackEXT(instance, debugCallback, 0);
+#endif
+
 	vkDestroyInstance(instance, 0);
 
 	return 0;

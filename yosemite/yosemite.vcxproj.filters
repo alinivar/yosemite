@@ -81,6 +81,9 @@
     <ClCompile Include="extern\glfw\src\osmesa_context.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="extern\volk\volk.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="extern\glfw\src\win32_joystick.h">
@@ -102,6 +105,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="extern\glfw\src\null_platform.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="extern\volk\volk.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
