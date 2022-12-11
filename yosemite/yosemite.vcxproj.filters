@@ -87,6 +87,51 @@
     <ClCompile Include="extern\fast_obj\fast_obj.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\allocator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\clusterizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\indexcodec.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\indexgenerator.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\overdrawanalyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\overdrawoptimizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\simplifier.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\spatialorder.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\stripifier.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vcacheanalyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vcacheoptimizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vertexcodec.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vertexfilter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vfetchanalyzer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="extern\meshoptimizer\src\vfetchoptimizer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="extern\glfw\src\win32_joystick.h">
@@ -114,6 +159,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="extern\fast_obj\fast_obj.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="extern\meshoptimizer\src\meshoptimizer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

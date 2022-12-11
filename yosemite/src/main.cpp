@@ -11,12 +11,15 @@
 #include <volk.h>
 
 #include <fast_obj.h>
+#include <meshoptimizer.h>
 
 #define VK_CHECK(vkcall)					\
 		{									\
 			VkResult result_ = (vkcall);	\
 			assert(result_ == VK_SUCCESS);	\
 		}
+
+#define VSYNC 0
 
 struct Vertex
 {
@@ -28,6 +31,7 @@ struct Vertex
 struct Mesh
 {
 	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 };
 
 struct Swapchain
@@ -300,7 +304,7 @@ void createSwapchain(Swapchain& swapchain, VkDevice device, VkPhysicalDevice phy
 	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 	createInfo.preTransform = surfaceCaps.currentTransform;
 	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+	createInfo.presentMode = VSYNC ? VK_PRESENT_MODE_FIFO_KHR : VK_PRESENT_MODE_IMMEDIATE_KHR;
 	createInfo.oldSwapchain = old;
 
 	VK_CHECK(vkCreateSwapchainKHR(device, &createInfo, 0, &swapchain.swapchain));
@@ -440,6 +444,8 @@ VkPipeline createGraphicsPipeline(VkDevice device, VkPipelineCache cache, VkPipe
 
 	VkPipelineRasterizationStateCreateInfo rasterizationState = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
 	rasterizationState.polygonMode = VK_POLYGON_MODE_FILL;
+	rasterizationState.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	rasterizationState.cullMode = VK_CULL_MODE_BACK_BIT;
 	rasterizationState.lineWidth = 1.0f;
 	createInfo.pRasterizationState = &rasterizationState;
 
@@ -599,6 +605,26 @@ void loadObj(std::vector<Vertex>& vertices, const char* path)
 	fast_obj_destroy(obj);
 }
 
+void loadMesh(Mesh& mesh, const char* path)
+{
+	std::vector<Vertex> triangle_vertices;
+	loadObj(triangle_vertices, path);
+
+	size_t index_count = triangle_vertices.size();
+
+	std::vector<uint32_t> remap(index_count);
+	size_t vertex_count = meshopt_generateVertexRemap(remap.data(), 0, index_count, triangle_vertices.data(), index_count, sizeof(Vertex));
+
+	mesh.vertices.resize(vertex_count);
+	mesh.indices.resize(index_count);
+
+	meshopt_remapVertexBuffer(mesh.vertices.data(), triangle_vertices.data(), index_count, sizeof(Vertex), remap.data());
+	meshopt_remapIndexBuffer(mesh.indices.data(), 0, index_count, remap.data());
+
+	meshopt_optimizeVertexCache(mesh.indices.data(), mesh.indices.data(), index_count, vertex_count);
+	meshopt_optimizeVertexFetch(mesh.vertices.data(), mesh.indices.data(), index_count, mesh.vertices.data(), vertex_count, sizeof(Vertex));
+}
+
 int main(int argc, char** argv)
 {
 	if (argc != 2)
@@ -684,8 +710,8 @@ int main(int argc, char** argv)
 	VkPhysicalDeviceMemoryProperties memoryProperties = {};
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
-	std::vector<Vertex> vertices;
-	loadObj(vertices, argv[1]);
+	Mesh mesh = {};
+	loadMesh(mesh, argv[1]);
 
 	Buffer scratch = {};
 	createBuffer(scratch, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -695,8 +721,11 @@ int main(int argc, char** argv)
 	Buffer ib = {};
 	createBuffer(ib, device, memoryProperties, 128 * 1024 * 1024, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
-	memcpy(scratch.data, vertices.data(), vertices.size()  * sizeof(Vertex));
-	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, vertices.size() * sizeof(Vertex));
+	memcpy(scratch.data, mesh.vertices.data(), mesh.vertices.size()  * sizeof(Vertex));
+	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, vb, mesh.vertices.size() * sizeof(Vertex));
+
+	memcpy(scratch.data, mesh.indices.data(), mesh.indices.size()  * sizeof(uint32_t));
+	uploadBuffer(device, queue, commandPool, commandBuffer, scratch, ib, mesh.indices.size() * sizeof(uint32_t));
 
 	VkSemaphore acquireSemaphore = createSemaphore(device);
 	assert(acquireSemaphore);
@@ -776,8 +805,9 @@ int main(int argc, char** argv)
 		descriptors[0].pBufferInfo = &vbInfo;
 
 		vkCmdPushDescriptorSetKHR(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, meshLayout, 0, ARRAYSIZE(descriptors), descriptors);
+		vkCmdBindIndexBuffer(commandBuffer, ib.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdDraw(commandBuffer, uint32_t(vertices.size()), 1, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, uint32_t(mesh.indices.size()), 1, 0, 0, 0);
 
 		vkCmdEndRendering(commandBuffer);
 		
