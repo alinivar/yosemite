@@ -1,3 +1,6 @@
 [submodule "yosemite/extern/glfw"]
 	path = yosemite/extern/glfw
 	url = https://github.com/glfw/glfw
+[submodule "yosemite/extern/volk"]
+	path = yosemite/extern/volk
+	url = https://github.com/zeux/volk
